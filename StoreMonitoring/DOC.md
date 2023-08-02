@@ -3,6 +3,117 @@
 #### Architecture Overview
 
 The Store Uptime and Downtime Report Generation system is designed as a FastAPI web application that utilizes a cache to store generated reports with a Time-To-Live (TTL) of 1 hour. It follows a trigger and poll architecture to generate reports asynchronously and provides an API endpoint to fetch the generated reports.
+### Endpoints
+
+1. **Home**
+
+   - URL: `/`
+   - Method: GET
+   - Description: This endpoint returns a simple "Hello World" message, indicating that the API is running.
+
+2. **Trigger Report**
+
+   - URL: `/trigger_report`
+   - Method: POST
+   - Description: This endpoint triggers the generation of a new report. It runs the report generation process in the background and returns a unique report_id that can be used to retrieve the report later.
+
+   - Request Body: None
+   - Response:
+     - Status 200 OK
+
+       ```
+       {
+           "report_id": "unique_report_id"
+       }
+       ```
+
+3. **Get Report**
+
+   - URL: `/get_report`
+   - Method: GET
+   - Description: This endpoint allows users to retrieve the status and data of a generated report using the report_id obtained from the trigger_report endpoint.
+
+   - Request Parameters:
+     - `report_id` (str): The unique report_id obtained from the trigger_report endpoint.
+
+   - Response:
+     - Status 200 OK (Report still being generated)
+
+       ```
+       {
+           "status": "Running"
+       }
+       ```
+
+     - Status 200 OK (Report generation complete)
+
+       ```
+       {
+           "status": "Complete",
+           "data": [
+               {
+                   "store_id": 1,
+                   "uptime_last_hour": 50,
+                   "uptime_last_day": 1200,
+                   "uptime_last_week": 5000,
+                   "downtime_last_hour": 10,
+                   "downtime_last_day": 240,
+                   "downtime_last_week": 1000
+               },
+               // More store data...
+           ]
+       }
+       ```
+
+### Database Data Extraction
+
+The API uses the following functions to extract data from the database:
+
+1. **get_all_store_ids**
+
+   - Description: This function retrieves all unique store_ids from the "status_logs" table in the database.
+
+2. **get_status_logs**
+
+   - Description: This function retrieves the "timestamp_utc" and "status" data for a specific store_id from the "status_logs" table, ordered by "timestamp_utc" in ascending order.
+
+3. **get_business_hours**
+
+   - Description: This function retrieves the "day", "start_time_local", and "end_time_local" data for a specific store_id from the "restaurants" table in the database.
+
+4. **get_store_timezone**
+
+   - Description: This function retrieves the timezone information for a specific store_id from the "timezones" table in the database. If no timezone information is found, it assumes the timezone as "America/Chicago."
+
+### Uptime and Downtime Calculation
+
+The `calculate_uptime_downtime` function calculates the uptime and downtime for a specific store using interpolation techniques. The function performs the following steps:
+
+1. Retrieves the status logs and business hours data for the store using the previously mentioned database extraction functions.
+
+2. Converts the retrieved data into pandas DataFrames for efficient processing.
+
+3. Determines the store's timezone and converts the timestamp data to the local timezone.
+
+4. Merges the status logs with the nearest business hours based on the day of the week and time of the day using pandas' `merge_asof` function.
+
+5. Interpolates missing status values within specific time intervals (last hour, last day, last week) to account for any gaps in the data.
+
+6. Calculates the uptime and downtime in minutes/hours based on the interpolated status logs.
+
+### CSV Output
+
+The API saves the generated report data to a CSV file named "report.csv" with the following columns:
+
+- store_id: The unique identifier for each store.
+- uptime_last_hour: The total uptime in minutes for the last hour.
+- uptime_last_day: The total uptime in hours for the last day.
+- uptime_last_week: The total uptime in hours for the last week.
+- downtime_last_hour: The total downtime in minutes for the last hour.
+- downtime_last_day: The total downtime in hours for the last day.
+- downtime_last_week: The total downtime in hours for the last week.
+
+The CSV file is generated upon completion of the report generation and will include data for all store_ids processed during the report generation. Each row in the CSV file represents the report data for a specific store.
 
 #### Components
 
@@ -41,19 +152,6 @@ The Store Uptime and Downtime Report Generation system is designed as a FastAPI 
 5. For each time interval (hour, day, and week), the system creates a DataFrame with all the timestamps within that interval and interpolates the status logs to get the status (active/inactive) for each minute/hour within the interval.
 
 6. Finally, the system converts the uptime and downtime from minutes to hours and stores the results in a dictionary with the store_id as the key.
-
-#### CSV Output
-
-The generated report data is saved as a CSV file named "report_output.csv" in the current working directory. The CSV file includes the following columns:
-
-- store_id
-- uptime_last_hour (in minutes)
-- uptime_last_day (in hours)
-- uptime_last_week (in hours)
-- downtime_last_hour (in minutes)
-- downtime_last_day (in hours)
-- downtime_last_week (in hours)
-
 
 ### Profiler Data Table
 
@@ -94,55 +192,6 @@ Line #      Hits         Time  Per Hit   % Time  Line Contents
 - Line 270: Creating an empty list `report_data` and storing it in the `report_cache` took approximately 562 microseconds (total time). This operation was executed only once.
 - Line 272-283: The loop to calculate uptime and downtime for each store_id and store the results in `report_data` took the most time. It spent approximately 412 seconds (98.8% of the total time) inside the `calculate_uptime_downtime` function for each store_id. Additionally, printing the progress (`cnt`) during the loop took approximately 967 milliseconds (0.2% of the total time) for each store_id.
 
-### Database Reads
-
-The application performs several database reads to gather the necessary data for generating the reports. These database reads are essential for the report generation process and are performed using the following functions:
-
-1. **`get_all_store_ids`:** This function retrieves all unique `store_id` values from the `status_logs` table. The query selects distinct `store_id` values from the database, and the result is fetched and returned as a list of integers representing each store's unique identifier.
-
-2. **`get_status_logs`:** Given a specific `store_id`, this function retrieves the `timestamp_utc` and `status` values from the `status_logs` table for that store. The records are ordered by `timestamp_utc` in ascending order, representing the chronological status logs for the store. The function returns the data as a list of dictionaries, where each dictionary contains the `timestamp_utc` and `status` for each log entry.
-
-3. **`get_business_hours`:** For a particular `store_id`, this function fetches the `day`, `start_time_local`, and `end_time_local` values from the `restaurants` table. These values represent the business hours for the store on each day of the week. The function returns the data as a list of tuples, where each tuple contains the `day`, `start_time_local`, and `end_time_local` values for a specific day.
-
-4. **`get_store_timezone`:** This function retrieves the timezone information for a specific `store_id` from the `timezones` table. If the timezone information is available, it returns the `timezone_str`. Otherwise, it assumes the timezone as "America/Chicago." The timezone information is essential for converting timestamps between UTC and the store's local timezone.
-
-### CSV Output
-
-The application generates the final report data as a dictionary containing uptime and downtime information for each store. However, as CSV format is commonly used for data storage and sharing, there is a need to save the report data in a CSV file for further analysis or distribution. To achieve this, the application can use the `pandas` library, which provides an easy-to-use interface for working with tabular data, including CSV files.
-
-To save the report data as a CSV file, the following steps can be taken:
-
-1. Convert the list of dictionaries (report data) into a pandas DataFrame.
-2. Use the pandas `to_csv` function to save the DataFrame as a CSV file.
-
-Example code to save the report data as a CSV file:
-
-```python
-import pandas as pd
-
-# Assuming report_data contains the generated report data as a list of dictionaries
-report_data = [
-    {
-        "store_id": 1,
-        "uptime_last_hour": 50,
-        "uptime_last_day": 1200,
-        "downtime_last_hour": 10,
-        "downtime_last_day": 240,
-    },
-    # More store data...
-]
-
-# Convert the report_data list of dictionaries to a pandas DataFrame
-report_df = pd.DataFrame(report_data)
-
-# Save the DataFrame as a CSV file
-report_df.to_csv("report.csv", index=False)
-```
-
-In this example, the `report_data` list of dictionaries is converted to a DataFrame using `pd.DataFrame(report_data)`. The `to_csv` function is then used to save the DataFrame as a CSV file named "report.csv." The `index=False` parameter is used to exclude the row numbers (index) from the CSV file.
-
-By following these steps, the application can generate the report data and save it in a CSV file for further use or analysis. The CSV file will contain a row for each store, with columns representing store_id, uptime in the last hour, uptime in the last day, downtime in the last hour, and downtime in the last day.
-
-#### Conclusion
+### Conclusion
 
 The Store Uptime and Downtime Report Generation system efficiently calculates and stores the uptime and downtime for multiple store_ids using interpolation methods and pandas DataFrames. The use of background tasks and a cache with TTL ensures a smooth and asynchronous report generation process. The output is provided to the user in a clean and organized CSV format for further analysis and insights.
