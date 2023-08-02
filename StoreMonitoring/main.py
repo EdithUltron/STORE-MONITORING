@@ -7,10 +7,33 @@ import uuid
 import pandas as pd
 import uvicorn
 from line_profiler import LineProfiler
+from fastapi.middleware.cors import CORSMiddleware  # Import the CORSMiddleware
 
 app = FastAPI()
 
 profiler = LineProfiler()
+
+
+origins = [
+    "http://localhost:3000",
+]
+
+# Add the CORS middleware to the app
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+from fastapi.responses import FileResponse
+
+@app.get("/download_report", tags=["report"])
+async def download_report(report_id: str):
+    file_path = f"report-{report_id}.csv"  # Assuming the report is saved with the report_id as the file name
+    return FileResponse(file_path, filename="report.csv")
+
 
 def profile(func):
     def inner(*args, **kwargs):
@@ -269,14 +292,14 @@ def generate_report(report_id: str):
     report_data = []
     report_cache[report_id] = report_data
     # Iterate over each store_id and calculate the report
-    for store_id in store_ids[:200]:
+    for store_id in store_ids[:50]:
         # Calculate uptime and downtime for the store
         uptime_downtime = calculate_uptime_downtime(store_id, current_timestamp)
         # print(uptime_downtime)
         # Store the report data for the store_id in the dictionary
         report_data.append(uptime_downtime)
-        cnt+=1
-        print(cnt)
+        # cnt+=1
+        # print(cnt)
 
     print_stats()
     # Store the entire dictionary of reports in the cache with the report_id as the key
@@ -292,12 +315,12 @@ async def get_report(report_id: str):
     if report_id in report_cache:
         # If the report is still being generated, return "Running"
         # print(report_cache[report_id])
-        if len(report_cache[report_id]) < 200:
+        if len(report_cache[report_id]) < 50:
             return {"status": "Running"}
 
         # If the report is complete, return "Complete" along with the entire dictionary of reports
         report_data = report_cache[report_id]
-        
+        report_cache.clear()
         # Convert the report_data list of dictionaries to a pandas DataFrame
         report_df = pd.DataFrame(report_data)
 
@@ -306,7 +329,8 @@ async def get_report(report_id: str):
                     "downtime_last_hour", "downtime_last_day", "downtime_last_week"]
 
         # Save the DataFrame as a CSV file with the specified column order
-        report_df.to_csv("report.csv", columns=csv_columns, index=False)
+        file_path = f"report-{report_id}.csv"
+        report_df.to_csv(file_path, columns=csv_columns, index=False)
         
         return {"status": "Complete", "data": report_data}
 
