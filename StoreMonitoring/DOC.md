@@ -103,7 +103,7 @@ The `calculate_uptime_downtime` function calculates the uptime and downtime for 
 
 ### CSV Output
 
-The API saves the generated report data to a CSV file named "report.csv" with the following columns:
+The API saves the generated report data to a CSV file named "report-reportID.csv" with the following columns:
 
 - store_id: The unique identifier for each store.
 - uptime_last_hour: The total uptime in minutes for the last hour.
