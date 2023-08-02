@@ -3,6 +3,10 @@
 #### Architecture Overview
 
 The Store Uptime and Downtime Report Generation system is designed as a FastAPI web application that utilizes a cache to store generated reports with a Time-To-Live (TTL) of 1 hour. It follows a trigger and poll architecture to generate reports asynchronously and provides an API endpoint to fetch the generated reports.
+
+### Demo Video
+[![Store Monitoring](https://img.youtube.com/vi/vihpc19vcKU/0.jpg)](https://www.youtube.com/watch?v=vihpc19vcKU)
+
 ### Endpoints
 
 1. **Home**
