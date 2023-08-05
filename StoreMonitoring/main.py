@@ -13,6 +13,8 @@ app = FastAPI()
 
 profiler = LineProfiler()
 
+SLICE_NUM=500
+
 
 origins = [
     "http://localhost:3000",
@@ -280,9 +282,29 @@ async def trigger_report(background_tasks: BackgroundTasks):
     return {"report_id": report_id}
 
 
+
+
+
+@profile
+def calculate_uptime_downtime_task(store_id:int, current_timestamp:datetime,report_id:int):
+    # ... (rest of the code for calculating uptime and downtime remains unchanged)
+
+    # Calculate uptime and downtime for the store
+    uptime_downtime = calculate_uptime_downtime(store_id, current_timestamp)
+
+    # Store the report data in the PostgreSQL database
+    # store_report_data(uptime_downtime)
+
+    report_cache[report_id].append(uptime_downtime)
+
+
+
+
+
+
 # Background function to generate the report for all store_ids
 @profile
-def generate_report(report_id: str):
+def generate_report(report_id: str,background_tasks: BackgroundTasks):
     # Get all store_ids from the database
     store_ids = get_all_store_ids()
     # print(len(store_ids))
@@ -292,14 +314,9 @@ def generate_report(report_id: str):
     report_data = []
     report_cache[report_id] = report_data
     # Iterate over each store_id and calculate the report
-    for store_id in store_ids[:50]:
+    for store_id in store_ids[:SLICE_NUM]:
         # Calculate uptime and downtime for the store
-        uptime_downtime = calculate_uptime_downtime(store_id, current_timestamp)
-        # print(uptime_downtime)
-        # Store the report data for the store_id in the dictionary
-        report_data.append(uptime_downtime)
-        # cnt+=1
-        # print(cnt)
+        background_tasks.add_task(calculate_uptime_downtime_task,store_id, current_timestamp,report_id)
 
     print_stats()
     # Store the entire dictionary of reports in the cache with the report_id as the key
@@ -315,7 +332,7 @@ async def get_report(report_id: str):
     if report_id in report_cache:
         # If the report is still being generated, return "Running"
         # print(report_cache[report_id])
-        if len(report_cache[report_id]) < 50:
+        if len(report_cache[report_id]) < SLICE_NUM:
             return {"status": "Running"}
 
         # If the report is complete, return "Complete" along with the entire dictionary of reports
