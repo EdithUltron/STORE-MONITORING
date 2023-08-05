@@ -275,7 +275,7 @@ async def trigger_report(background_tasks: BackgroundTasks):
     report_id = str(uuid.uuid4())
 
     # Run the report generation process in the background
-    background_tasks.add_task(generate_report, report_id)
+    background_tasks.add_task(generate_report, report_id,background_tasks)
 
 
     # Return the report_id
